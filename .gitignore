@@ -1,0 +1,23 @@
+# Compiled executable
+siams
+siams.exe
+*.o
+*.obj
+
+# Data files (generated at runtime)
+data/
+
+# Report files (generated at runtime)
+report_*.txt
+
+# IDE files
+.vscode/
+.vs/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+
+# OS files
+.DS_Store
+Thumbs.db
