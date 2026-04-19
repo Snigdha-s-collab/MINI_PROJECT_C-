@@ -40,19 +40,19 @@ public:
 
     // ============ CHANGE PASSWORD ============
     void changePassword() {
-        ConsoleUI::printHeader("CHANGE PASSWORD");
-        string oldPwd = ConsoleUI::getInput("Current Password");
+        ConsoleUI::printHeader("CHANGE YOUR PASSWORD");
+        string oldPwd = ConsoleUI::getInput("Enter your current password");
         User* user = nullptr;
         if(currentUserType=="student") user = findStudent(currentUserID);
         else user = findCompany(currentUserID);
-        if(!user || !user->checkPassword(oldPwd)) { ConsoleUI::printError("Wrong current password!"); ConsoleUI::pressEnter(); return; }
-        string newPwd = ConsoleUI::getInput("New Password");
-        string confirm = ConsoleUI::getInput("Confirm New Password");
-        if(newPwd != confirm) { ConsoleUI::printError("Passwords don't match!"); ConsoleUI::pressEnter(); return; }
-        if(newPwd.size() < 4) { ConsoleUI::printError("Password too short (min 4 chars)!"); ConsoleUI::pressEnter(); return; }
+        if(!user || !user->checkPassword(oldPwd)) { ConsoleUI::printError("That password is incorrect! Please try again."); ConsoleUI::pressEnter(); return; }
+        string newPwd = ConsoleUI::getInput("Enter your new password (minimum 4 characters)");
+        string confirm = ConsoleUI::getInput("Re-enter your new password to confirm");
+        if(newPwd != confirm) { ConsoleUI::printError("The passwords you entered don't match! Please try again."); ConsoleUI::pressEnter(); return; }
+        if(newPwd.size() < 4) { ConsoleUI::printError("Password is too short! It must be at least 4 characters."); ConsoleUI::pressEnter(); return; }
         user->changePassword(newPwd);
         saveAll();
-        ConsoleUI::printSuccess("Password changed successfully!");
+        ConsoleUI::printSuccess("Your password has been changed successfully!");
         ConsoleUI::pressEnter();
     }
 
@@ -103,7 +103,7 @@ public:
     // ============ SEARCH INTERNSHIPS BY KEYWORD ============
     void searchInternships() {
         ConsoleUI::printHeader("SEARCH INTERNSHIPS");
-        string keyword = ConsoleUI::getInput("Enter keyword (role/company/skill)");
+        string keyword = ConsoleUI::getInput("Type a keyword to search (e.g. role name, company name, skill, or city)");
         if(keyword.empty()) return;
         Student* stu = findStudent(currentUserID);
         vector<Internship> results;
@@ -116,8 +116,8 @@ public:
             for(auto&sk:i.getRequiredSkills()) if(StrUtil::containsIgnoreCase(sk, keyword)) { match=true; break; }
             if(match) results.push_back(i);
         }
-        if(results.empty()) { ConsoleUI::printInfo("No results for '" + keyword + "'."); ConsoleUI::pressEnter(); return; }
-        ConsoleUI::printSubHeader("Found " + to_string(results.size()) + " result(s) for '" + keyword + "'");
+        if(results.empty()) { ConsoleUI::printInfo("No internships found matching '" + keyword + "'. Try a different keyword."); ConsoleUI::pressEnter(); return; }
+        ConsoleUI::printSubHeader("Found " + to_string(results.size()) + " internship(s) matching '" + keyword + "'");
         for(size_t idx=0; idx<results.size(); idx++) {
             auto& intern = results[idx];
             Company* c = findCompany(intern.getCompanyID());
@@ -136,17 +136,41 @@ public:
     // ============ VIEW APPLICATION DETAILS ============
     void viewApplicationDetails() {
         ConsoleUI::printHeader("APPLICATION DETAILS");
-        int aid = ConsoleUI::getInt("Enter Application ID");
-        Application* app = findApplication(aid);
-        if(!app) { ConsoleUI::printError("Application not found!"); ConsoleUI::pressEnter(); return; }
-        // Verify ownership
-        if(currentUserType=="student" && app->getStudentID()!=currentUserID) { ConsoleUI::printError("Not your application!"); ConsoleUI::pressEnter(); return; }
+
+        // Collect applications visible to the current user
+        vector<Application*> myApps;
+        if(currentUserType=="student") {
+            for(auto&a:applications) if(a.getStudentID()==currentUserID) myApps.push_back(&a);
+        } else {
+            for(auto&a:applications) {
+                Internship* intern = findInternship(a.getInternshipID());
+                if(intern && intern->getCompanyID()==currentUserID) myApps.push_back(&a);
+            }
+        }
+        if(myApps.empty()) { ConsoleUI::printInfo("You have no applications to view."); ConsoleUI::pressEnter(); return; }
+
+        // Show numbered list
+        cout << Color::CYAN << "  Pick an application to see its full details:\n\n";
+        for(size_t i=0; i<myApps.size(); i++) {
+            Internship* intern = findInternship(myApps[i]->getInternshipID());
+            Company* comp = intern ? findCompany(intern->getCompanyID()) : nullptr;
+            Student* stu = findStudent(myApps[i]->getStudentID());
+            cout << Color::BYELLOW << "    [" << (i+1) << "] " << Color::WHITE;
+            if(currentUserType=="student")
+                cout << (intern?intern->getRole():"?") << " at " << (comp?comp->getName():"?");
+            else
+                cout << (stu?stu->getName():"?") << " -> " << (intern?intern->getRole():"?");
+            cout << Color::DIM << "  (" << myApps[i]->getStatusColor() << myApps[i]->getStatus() << Color::DIM << ", " << myApps[i]->getDate() << ")" << Color::RESET << "\n";
+        }
+
+        int sel = ConsoleUI::getInt("Enter the number of the application you want to view", 1, (int)myApps.size()) - 1;
+        Application* app = myApps[sel];
         Internship* intern = findInternship(app->getInternshipID());
         Company* comp = intern ? findCompany(intern->getCompanyID()) : nullptr;
         Student* stu = findStudent(app->getStudentID());
-        if(currentUserType=="company" && (!intern || intern->getCompanyID()!=currentUserID)) { ConsoleUI::printError("Not your internship!"); ConsoleUI::pressEnter(); return; }
-        ConsoleUI::printSubHeader("Application A" + to_string(aid));
-        cout << Color::CYAN << "  Student     : " << Color::WHITE << (stu?stu->getName():"?") << " (S" << app->getStudentID() << ")\n";
+
+        ConsoleUI::printSubHeader("Application Details");
+        cout << Color::CYAN << "  Student     : " << Color::WHITE << (stu?stu->getName():"?") << "\n";
         cout << Color::CYAN << "  Role        : " << Color::WHITE << (intern?intern->getRole():"?") << "\n";
         cout << Color::CYAN << "  Company     : " << Color::WHITE << (comp?comp->getName():"?") << "\n";
         cout << Color::CYAN << "  Applied On  : " << Color::WHITE << app->getDate() << "\n";
@@ -156,7 +180,7 @@ public:
         if(!app->getRemarks().empty()) cout << Color::CYAN << "  Remarks     : " << Color::WHITE << app->getRemarks() << "\n";
         if(stu && intern) {
             auto missing = ResumeScorer::getMissingSkills(*stu, *intern);
-            if(!missing.empty()) ConsoleUI::printInfo("Missing skills: " + StrUtil::join(missing, ", "));
+            if(!missing.empty()) ConsoleUI::printInfo("Skills the student is missing: " + StrUtil::join(missing, ", "));
         }
         cout << Color::RESET;
         ConsoleUI::pressEnter();
@@ -165,40 +189,48 @@ public:
     // ============ REGISTRATION ============
     void registerStudent() {
         ConsoleUI::printHeader("STUDENT REGISTRATION");
-        string name = ConsoleUI::getInput("Full Name");
-        string email = ConsoleUI::getInput("Email");
-        for(auto&s:students) { if(s.getEmail()==email) { ConsoleUI::printError("Email already registered!"); return; } }
-        string pwd = ConsoleUI::getInput("Password");
-        float cgpa = ConsoleUI::getFloat("CGPA (0.0-10.0)", 0, 10);
-        string sk = ConsoleUI::getInput("Skills (comma-separated)");
+        ConsoleUI::printInfo("Please fill in the following details to create your student account.");
+        cout << "\n";
+        string name = ConsoleUI::getInput("Your Full Name (e.g. Priya Sharma)");
+        string email = ConsoleUI::getInput("Your Email Address (e.g. priya@gmail.com)");
+        for(auto&s:students) { if(s.getEmail()==email) { ConsoleUI::printError("This email is already registered! Please login instead."); ConsoleUI::pressEnter(); return; } }
+        string pwd = ConsoleUI::getInput("Create a Password (minimum 4 characters)");
+        if(pwd.size() < 4) { ConsoleUI::printError("Password too short! Must be at least 4 characters."); ConsoleUI::pressEnter(); return; }
+        float cgpa = ConsoleUI::getFloat("Your Current CGPA (on a scale of 0.0 to 10.0)", 0, 10);
+        string sk = ConsoleUI::getInput("Your Skills (separate each skill with a comma, e.g. Python, C++, SQL, Machine Learning)");
         vector<string> skills = StrUtil::split(sk, ',');
-        string resume = ConsoleUI::getInput("Brief Resume/About");
+        string resume = ConsoleUI::getInput("Write a short description about yourself (your experience, projects, interests)");
         Student s(nextStudentID(), name, email, StrUtil::hashPassword(pwd), cgpa, skills, resume);
         students.push_back(s);
         saveAll();
-        ConsoleUI::printSuccess("Registered! Your ID: S" + to_string(s.getId()));
+        ConsoleUI::printSuccess("Registration successful! Welcome, " + name + "!");
+        ConsoleUI::printInfo("You can now login using your email and password.");
         ConsoleUI::pressEnter();
     }
 
     void registerCompany() {
         ConsoleUI::printHeader("COMPANY REGISTRATION");
-        string name = ConsoleUI::getInput("Company Name");
-        string email = ConsoleUI::getInput("Email");
-        for(auto&c:companies) { if(c.getEmail()==email) { ConsoleUI::printError("Email already registered!"); return; } }
-        string pwd = ConsoleUI::getInput("Password");
-        string industry = ConsoleUI::getInput("Industry (IT/Finance/Consulting/Manufacturing/Other)");
+        ConsoleUI::printInfo("Please fill in the following details to register your company.");
+        cout << "\n";
+        string name = ConsoleUI::getInput("Company Name (e.g. TechNova Solutions)");
+        string email = ConsoleUI::getInput("Company Email Address (e.g. hr@technova.com)");
+        for(auto&c:companies) { if(c.getEmail()==email) { ConsoleUI::printError("This email is already registered! Please login instead."); ConsoleUI::pressEnter(); return; } }
+        string pwd = ConsoleUI::getInput("Create a Password (minimum 4 characters)");
+        if(pwd.size() < 4) { ConsoleUI::printError("Password too short! Must be at least 4 characters."); ConsoleUI::pressEnter(); return; }
+        string industry = ConsoleUI::getInput("Industry Type (choose one: IT / Finance / Consulting / Manufacturing / Other)");
         Company c(nextCompanyID(), name, email, StrUtil::hashPassword(pwd), industry);
         companies.push_back(c);
         saveAll();
-        ConsoleUI::printSuccess("Registered! Your ID: C" + to_string(c.getId()));
+        ConsoleUI::printSuccess("Registration successful! Welcome, " + name + "!");
+        ConsoleUI::printInfo("You can now login using your email and password.");
         ConsoleUI::pressEnter();
     }
 
     // ============ LOGIN ============
     int loginStudent() {
         ConsoleUI::printHeader("STUDENT LOGIN");
-        string email = ConsoleUI::getInput("Email");
-        string pwd = ConsoleUI::getInput("Password");
+        string email = ConsoleUI::getInput("Enter your registered email address");
+        string pwd = ConsoleUI::getInput("Enter your password");
         for(auto&s:students) {
             if(s.getEmail()==email && s.checkPassword(pwd)) {
                 currentUserID = s.getId(); currentUserType = "student";
@@ -206,13 +238,13 @@ public:
                 return s.getId();
             }
         }
-        ConsoleUI::printError("Invalid credentials!"); ConsoleUI::pressEnter(); return -1;
+        ConsoleUI::printError("Wrong email or password! Please try again."); ConsoleUI::pressEnter(); return -1;
     }
 
     int loginCompany() {
         ConsoleUI::printHeader("COMPANY LOGIN");
-        string email = ConsoleUI::getInput("Email");
-        string pwd = ConsoleUI::getInput("Password");
+        string email = ConsoleUI::getInput("Enter your company's registered email address");
+        string pwd = ConsoleUI::getInput("Enter your password");
         for(auto&c:companies) {
             if(c.getEmail()==email && c.checkPassword(pwd)) {
                 currentUserID = c.getId(); currentUserType = "company";
@@ -220,34 +252,36 @@ public:
                 return c.getId();
             }
         }
-        ConsoleUI::printError("Invalid credentials!"); ConsoleUI::pressEnter(); return -1;
+        ConsoleUI::printError("Wrong email or password! Please try again."); ConsoleUI::pressEnter(); return -1;
     }
 
     // ============ POST INTERNSHIP (Company) ============
     void postInternship() {
-        ConsoleUI::printHeader("POST NEW INTERNSHIP");
+        ConsoleUI::printHeader("POST A NEW INTERNSHIP OPPORTUNITY");
         Company* comp = findCompany(currentUserID);
         if(!comp) return;
-        string role = ConsoleUI::getInput("Role/Title");
-        string sk = ConsoleUI::getInput("Required Skills (comma-separated)");
+        ConsoleUI::printInfo("Fill in the details below to create a new internship listing.");
+        cout << "\n";
+        string role = ConsoleUI::getInput("Job Title / Role (e.g. Software Developer Intern, Data Analyst Intern)");
+        string sk = ConsoleUI::getInput("Required Skills (separate with commas, e.g. Python, SQL, Machine Learning)");
         vector<string> skills = StrUtil::split(sk, ',');
-        float minCGPA = ConsoleUI::getFloat("Minimum CGPA required", 0, 10);
-        int stipend = ConsoleUI::getInt("Stipend (Rs/month)", 0, 999999);
-        int duration = ConsoleUI::getInt("Duration (months)", 1, 24);
-        string location = ConsoleUI::getInput("Location");
+        float minCGPA = ConsoleUI::getFloat("Minimum CGPA required (0.0 to 10.0)", 0, 10);
+        int stipend = ConsoleUI::getInt("Monthly Stipend in Rupees (e.g. 25000)", 0, 999999);
+        int duration = ConsoleUI::getInt("Internship Duration in months (e.g. 3)", 1, 24);
+        string location = ConsoleUI::getInput("Work Location (e.g. Bangalore, Remote, Mumbai)");
         string deadline;
         while(true) {
-            deadline = ConsoleUI::getInput("Application Deadline (DD-MM-YYYY)");
+            deadline = ConsoleUI::getInput("Last date to apply (format: DD-MM-YYYY, e.g. 30-06-2026)");
             if(DateUtil::isValidDate(deadline) && !DateUtil::isDeadlinePassed(deadline)) break;
-            ConsoleUI::printError("Invalid or past date. Use DD-MM-YYYY format.");
+            ConsoleUI::printError("That date is invalid or already passed. Please enter a future date in DD-MM-YYYY format.");
         }
-        int maxApp = ConsoleUI::getInt("Max Applicants", 1, 10000);
+        int maxApp = ConsoleUI::getInt("Maximum number of applicants you want to accept (e.g. 50)", 1, 10000);
         int iid = nextInternshipID();
         Internship intern(iid, currentUserID, role, skills, minCGPA, stipend, duration, location, deadline, maxApp);
         internships.push_back(intern);
         comp->addInternship(iid);
         saveAll();
-        ConsoleUI::printSuccess("Internship posted! ID: I" + to_string(iid));
+        ConsoleUI::printSuccess("Internship '" + role + "' posted successfully!");
         // Notify matching students
         for(auto&s:students) {
             int match = ResumeScorer::calculateMatchPercentage(s, intern);
@@ -259,28 +293,28 @@ public:
 
     // ============ BROWSE INTERNSHIPS (Student) ============
     void browseInternships() {
-        ConsoleUI::printHeader("BROWSE INTERNSHIPS");
-        cout << Color::CYAN << "  Filter options:\n";
-        ConsoleUI::printMenuItem(1, "View All Open");
-        ConsoleUI::printMenuItem(2, "Filter by Min Stipend");
-        ConsoleUI::printMenuItem(3, "Filter by Location");
-        ConsoleUI::printMenuItem(4, "Filter by Skills");
-        ConsoleUI::printMenuItem(5, "Sort by Stipend (High to Low)");
-        ConsoleUI::printMenuItem(6, "Sort by Deadline (Nearest)");
-        ConsoleUI::printMenuItem(7, "Sort by Match % (Best First)");
+        ConsoleUI::printHeader("BROWSE AVAILABLE INTERNSHIPS");
+        cout << Color::CYAN << "  How would you like to view internships?\n\n";
+        ConsoleUI::printMenuItem(1, "Show All Open Internships");
+        ConsoleUI::printMenuItem(2, "Show Only Those With Stipend Above a Certain Amount");
+        ConsoleUI::printMenuItem(3, "Show Only in a Specific City/Location");
+        ConsoleUI::printMenuItem(4, "Show Only Those Requiring a Specific Skill");
+        ConsoleUI::printMenuItem(5, "Sort by Highest Stipend First");
+        ConsoleUI::printMenuItem(6, "Sort by Nearest Deadline First");
+        ConsoleUI::printMenuItem(7, "Sort by Best Match for Your Profile First");
         int ch = ConsoleUI::getChoice(1, 7);
 
         vector<Internship> filtered;
         for(auto&i:internships) { i.autoClose(); if(i.isOpen()) filtered.push_back(i); }
 
         if(ch==2) {
-            int minS = ConsoleUI::getInt("Minimum stipend", 0, 999999);
+            int minS = ConsoleUI::getInt("Enter the minimum stipend amount in Rupees (e.g. 20000)", 0, 999999);
             filtered = filterItems<Internship>(filtered, [minS](const Internship&i){ return i.getStipend()>=minS; });
         } else if(ch==3) {
-            string loc = ConsoleUI::getInput("Location");
+            string loc = ConsoleUI::getInput("Enter a city or location name (e.g. Bangalore, Remote)");
             filtered = filterItems<Internship>(filtered, [loc](const Internship&i){ return StrUtil::toLower(i.getLocation()).find(StrUtil::toLower(loc))!=string::npos; });
         } else if(ch==4) {
-            string sk = ConsoleUI::getInput("Skill to search");
+            string sk = ConsoleUI::getInput("Enter a skill to search for (e.g. Python, React, SQL)");
             filtered = filterItems<Internship>(filtered, [sk](const Internship&i){
                 for(auto&s:i.getRequiredSkills()) if(StrUtil::toLower(s).find(StrUtil::toLower(sk))!=string::npos) return true;
                 return false;
@@ -292,14 +326,14 @@ public:
         else if(ch==6) sort(filtered.begin(), filtered.end(), [](auto&a,auto&b){ return DateUtil::daysRemaining(a.getDeadline())<DateUtil::daysRemaining(b.getDeadline()); });
         else if(ch==7 && stu) sort(filtered.begin(), filtered.end(), [&](auto&a,auto&b){ return ResumeScorer::calculateMatchPercentage(*stu,a)>ResumeScorer::calculateMatchPercentage(*stu,b); });
 
-        if(filtered.empty()) { ConsoleUI::printInfo("No internships found."); ConsoleUI::pressEnter(); return; }
+        if(filtered.empty()) { ConsoleUI::printInfo("No internships found with the selected filter."); ConsoleUI::pressEnter(); return; }
 
-        ConsoleUI::printSubHeader("Found " + to_string(filtered.size()) + " Internship(s)");
+        ConsoleUI::printSubHeader("Showing " + to_string(filtered.size()) + " Internship(s)");
         for(size_t idx=0; idx<filtered.size(); idx++) {
             auto& intern = filtered[idx];
             Company* c = findCompany(intern.getCompanyID());
             cout << Color::BOLD << Color::BMAGENTA << "  [" << (idx+1) << "] ";
-            if(c) { cout << c->getName(); ConsoleUI::printStars(c->getRating()); }
+            if(c) { cout << c->getName() << " "; ConsoleUI::printStars(c->getRating()); }
             cout << Color::RESET << "\n";
             cout << intern;
             if(stu) {
@@ -313,32 +347,71 @@ public:
 
     // ============ APPLY TO INTERNSHIP ============
     void applyToInternship() {
-        ConsoleUI::printHeader("APPLY TO INTERNSHIP");
+        ConsoleUI::printHeader("APPLY TO AN INTERNSHIP");
         Student* stu = findStudent(currentUserID);
         if(!stu) return;
-        int iid = ConsoleUI::getInt("Enter Internship ID");
-        Internship* intern = findInternship(iid);
-        if(!intern) { ConsoleUI::printError("Internship not found!"); ConsoleUI::pressEnter(); return; }
-        if(!intern->isOpen()) { ConsoleUI::printError("This internship is closed!"); ConsoleUI::pressEnter(); return; }
-        // Conflict detection: duplicate
-        for(auto&a:applications) {
-            if(a.getStudentID()==currentUserID && a.getInternshipID()==iid) {
-                ConsoleUI::printError("You already applied to this internship!"); ConsoleUI::pressEnter(); return;
+
+        // Collect open internships the student hasn't already applied to
+        vector<Internship*> available;
+        for(auto&i:internships) {
+            i.autoClose();
+            if(!i.isOpen()) continue;
+            bool alreadyApplied = false;
+            for(auto&a:applications) {
+                if(a.getStudentID()==currentUserID && a.getInternshipID()==i.getId()) { alreadyApplied=true; break; }
             }
+            if(!alreadyApplied) available.push_back(&i);
         }
+
+        if(available.empty()) {
+            ConsoleUI::printInfo("There are no open internships available to apply to right now (or you've already applied to all of them).");
+            ConsoleUI::pressEnter(); return;
+        }
+
+        // Show numbered list of available internships with company names
+        ConsoleUI::printSubHeader("Available Internships You Can Apply To");
+        for(size_t idx=0; idx<available.size(); idx++) {
+            Company* c = findCompany(available[idx]->getCompanyID());
+            int mp = ResumeScorer::calculateMatchPercentage(*stu, *available[idx]);
+            cout << Color::BOLD << Color::BMAGENTA << "  [" << (idx+1) << "] " << Color::RESET;
+            cout << Color::BOLD << Color::WHITE << available[idx]->getRole() << Color::RESET;
+            if(c) cout << Color::DIM << " at " << Color::BBLUE << c->getName() << Color::RESET;
+            cout << Color::CYAN << "  |  Stipend: " << Color::BGREEN << "Rs." << available[idx]->getStipend() << "/month" << Color::RESET;
+            cout << Color::CYAN << "  |  Location: " << Color::WHITE << available[idx]->getLocation() << Color::RESET;
+            cout << Color::CYAN << "  |  Match: " << Color::WHITE << mp << "%" << Color::RESET;
+            cout << Color::CYAN << "  |  Deadline: " << Color::WHITE << available[idx]->getDeadline() << Color::RESET;
+            int dr = DateUtil::daysRemaining(available[idx]->getDeadline());
+            if(dr > 0) cout << Color::BGREEN << " (" << dr << " days left)";
+            cout << Color::RESET << "\n";
+            // Show required skills
+            cout << Color::DIM << "      Skills needed: " << Color::BYELLOW << StrUtil::join(available[idx]->getRequiredSkills(), ", ") << Color::RESET << "\n";
+            ConsoleUI::printDivider();
+        }
+
+        int sel = ConsoleUI::getInt("Enter the number of the internship you want to apply to", 1, (int)available.size()) - 1;
+        Internship* intern = available[sel];
+        int iid = intern->getId();
+
         // Conflict: already selected elsewhere
         for(auto&a:applications) {
             if(a.getStudentID()==currentUserID && a.getStatus()=="SELECTED") {
-                ConsoleUI::printWarning("Note: You are already SELECTED for another internship (App ID: " + to_string(a.getId()) + ")");
+                Internship* selIntern = findInternship(a.getInternshipID());
+                Company* selComp = selIntern ? findCompany(selIntern->getCompanyID()) : nullptr;
+                ConsoleUI::printWarning("Heads up: You are already SELECTED for '" + (selIntern?selIntern->getRole():"?") + "' at " + (selComp?selComp->getName():"?") + ". You can still apply here.");
             }
         }
         // CGPA warning
         if(stu->getCgpa() < intern->getMinCGPA()) {
-            ConsoleUI::printWarning("Your CGPA (" + to_string(stu->getCgpa()).substr(0,3) + ") is below minimum (" + to_string(intern->getMinCGPA()).substr(0,3) + "). Apply anyway?");
-            cout << Color::CYAN << "  Continue? (y/n): " << Color::WHITE;
-            string yn; getline(cin, yn);
-            if(yn != "y" && yn != "Y") return;
+            ConsoleUI::printWarning("Your CGPA (" + to_string(stu->getCgpa()).substr(0,3) + ") is below the minimum required (" + to_string(intern->getMinCGPA()).substr(0,3) + ").");
+            if(!ConsoleUI::confirm("Do you still want to apply?")) return;
         }
+
+        // Confirm application
+        Company* comp = findCompany(intern->getCompanyID());
+        cout << "\n";
+        ConsoleUI::printInfo("You are about to apply for: " + intern->getRole() + " at " + (comp?comp->getName():"?"));
+        if(!ConsoleUI::confirm("Confirm your application?")) return;
+
         int score = ResumeScorer::calculateScore(*stu, *intern);
         int matchPct = ResumeScorer::calculateMatchPercentage(*stu, *intern);
         int aid = nextAppID();
@@ -348,13 +421,16 @@ public:
         if(intern->getCurrentApplicants() >= intern->getMaxApplicants()) intern->setStatus("CLOSED");
         stu->addApplication(aid);
         addNotif(intern->getCompanyID(), "company", "New application for " + intern->getRole() + " from " + stu->getName());
-        // Show missing skills
+        // Show result
         auto missing = ResumeScorer::getMissingSkills(*stu, *intern);
-        ConsoleUI::printSuccess("Application submitted! ID: A" + to_string(aid));
-        cout << Color::CYAN << "  Resume Score: " << Color::WHITE << score << "/100\n";
-        cout << Color::CYAN << "  Skill Match:  "; ConsoleUI::printProgressBar(matchPct, 100); cout << "\n";
+        cout << "\n";
+        ConsoleUI::printSuccess("Application submitted successfully!");
+        cout << Color::CYAN << "  Role Applied For : " << Color::WHITE << intern->getRole() << "\n";
+        cout << Color::CYAN << "  Company          : " << Color::WHITE << (comp?comp->getName():"?") << "\n";
+        cout << Color::CYAN << "  Resume Score     : " << Color::WHITE << score << "/100\n";
+        cout << Color::CYAN << "  Skill Match      : "; ConsoleUI::printProgressBar(matchPct, 100); cout << "\n";
         if(!missing.empty()) {
-            ConsoleUI::printInfo("Skills to improve: " + StrUtil::join(missing, ", "));
+            ConsoleUI::printInfo("Skills you could improve to boost your chances: " + StrUtil::join(missing, ", "));
         }
         saveAll();
         ConsoleUI::pressEnter();
@@ -391,32 +467,36 @@ public:
 
     // ============ COMPANY: VIEW APPLICANTS ============
     void viewApplicants() {
-        ConsoleUI::printHeader("VIEW APPLICANTS");
+        ConsoleUI::printHeader("MANAGE APPLICANTS");
         Company* comp = findCompany(currentUserID);
         if(!comp) return;
         // List company's internships
         vector<Internship*> myInterns;
         for(auto&i:internships) if(i.getCompanyID()==currentUserID) myInterns.push_back(&i);
-        if(myInterns.empty()) { ConsoleUI::printInfo("No internships posted yet."); ConsoleUI::pressEnter(); return; }
-        cout << Color::CYAN << "  Your Internships:\n";
+        if(myInterns.empty()) { ConsoleUI::printInfo("You haven't posted any internships yet. Post one first from the main menu."); ConsoleUI::pressEnter(); return; }
+        cout << Color::CYAN << "  Select one of your internships to view its applicants:\n\n";
         for(size_t i=0;i<myInterns.size();i++) {
+            int appCount = 0;
+            for(auto&a:applications) if(a.getInternshipID()==myInterns[i]->getId()) appCount++;
             cout << Color::BYELLOW << "    [" << (i+1) << "] " << Color::WHITE << myInterns[i]->getRole()
-                 << Color::DIM << " (I" << myInterns[i]->getId() << ", " << myInterns[i]->getCurrentApplicants() << " applicants)\n";
+                 << Color::DIM << " (" << appCount << " applicant(s), Status: "
+                 << (myInterns[i]->isOpen() ? Color::BGREEN+"OPEN" : Color::BRED+"CLOSED") << Color::DIM << ")" << Color::RESET << "\n";
         }
-        int sel = ConsoleUI::getInt("Select internship #", 1, (int)myInterns.size()) - 1;
+        int sel = ConsoleUI::getInt("Enter the number of the internship", 1, (int)myInterns.size()) - 1;
         int iid = myInterns[sel]->getId();
 
         ConsoleUI::printSubHeader("Applicants for: " + myInterns[sel]->getRole());
-        ConsoleUI::printMenuItem(1, "View All");
-        ConsoleUI::printMenuItem(2, "Auto-Shortlist (Top 30%)");
-        ConsoleUI::printMenuItem(3, "Filter by Min CGPA");
-        ConsoleUI::printMenuItem(4, "Change Application Status");
-        ConsoleUI::printMenuItem(5, "Bulk Reject Below Score");
+        cout << Color::CYAN << "  What would you like to do?\n\n";
+        ConsoleUI::printMenuItem(1, "View All Applicants");
+        ConsoleUI::printMenuItem(2, "Auto-Shortlist Top 30% of Applicants");
+        ConsoleUI::printMenuItem(3, "Show Only Applicants With CGPA Above a Certain Value");
+        ConsoleUI::printMenuItem(4, "Accept / Reject / Shortlist a Specific Applicant");
+        ConsoleUI::printMenuItem(5, "Bulk Reject All Applicants Below a Certain Score");
         int action = ConsoleUI::getChoice(1, 5);
 
         if(action==2) {
             auto shortlisted = MatchEngine::autoShortlist(applications, iid);
-            ConsoleUI::printSuccess("Auto-shortlisted " + to_string(shortlisted.size()) + " applicant(s)!");
+            ConsoleUI::printSuccess("Auto-shortlisted " + to_string(shortlisted.size()) + " applicant(s) based on their resume scores!");
             for(int sid : shortlisted) {
                 addNotif(sid, "student", "Your application for " + myInterns[sel]->getRole() + " has been SHORTLISTED!");
             }
@@ -424,26 +504,43 @@ public:
         }
 
         if(action==4) {
-            int aid = ConsoleUI::getInt("Application ID to update");
-            Application* app = findApplication(aid);
-            if(!app || app->getInternshipID()!=iid) { ConsoleUI::printError("Invalid App ID"); ConsoleUI::pressEnter(); return; }
-            cout << Color::CYAN << "  New Status:\n";
-            ConsoleUI::printMenuItem(1, "SHORTLISTED"); ConsoleUI::printMenuItem(2, "REJECTED");
-            ConsoleUI::printMenuItem(3, "SELECTED");
+            // Show numbered list of applicants for this internship
+            vector<Application*> internApps;
+            for(auto&a:applications) if(a.getInternshipID()==iid) internApps.push_back(&a);
+            if(internApps.empty()) { ConsoleUI::printInfo("No one has applied to this internship yet."); ConsoleUI::pressEnter(); return; }
+
+            cout << Color::CYAN << "\n  Select the applicant whose status you want to change:\n\n";
+            for(size_t i=0; i<internApps.size(); i++) {
+                Student* s = findStudent(internApps[i]->getStudentID());
+                cout << Color::BYELLOW << "    [" << (i+1) << "] " << Color::WHITE << (s?s->getName():"Unknown")
+                     << Color::DIM << " | CGPA: " << (s?to_string(s->getCgpa()).substr(0,3):"?") 
+                     << " | Score: " << internApps[i]->getResumeScore()
+                     << " | Match: " << internApps[i]->getMatchPercentage() << "%"
+                     << " | Current Status: " << internApps[i]->getStatusColor() << internApps[i]->getStatus()
+                     << Color::RESET << "\n";
+            }
+
+            int appSel = ConsoleUI::getInt("Enter the number of the applicant", 1, (int)internApps.size()) - 1;
+            Application* app = internApps[appSel];
+            Student* selectedStu = findStudent(app->getStudentID());
+            cout << "\n" << Color::CYAN << "  What do you want to do with " << Color::WHITE << (selectedStu?selectedStu->getName():"this applicant") << Color::CYAN << "'s application?\n\n";
+            ConsoleUI::printMenuItem(1, "Shortlist (move to next round)");
+            ConsoleUI::printMenuItem(2, "Reject (decline this applicant)");
+            ConsoleUI::printMenuItem(3, "Select (offer the internship to this applicant)");
             int st = ConsoleUI::getChoice(1, 3);
             string statuses[] = {"SHORTLISTED", "REJECTED", "SELECTED"};
             app->setStatus(statuses[st-1]);
-            string remarks = ConsoleUI::getInput("Remarks (optional)");
+            string remarks = ConsoleUI::getInput("Add any remarks or feedback for this applicant (or press Enter to skip)");
             if(!remarks.empty()) app->setRemarks(remarks);
             if(st==3) comp->incrementHires();
             addNotif(app->getStudentID(), "student", "Application for " + myInterns[sel]->getRole() + ": " + statuses[st-1]);
             saveAll();
-            ConsoleUI::printSuccess("Status updated!");
+            ConsoleUI::printSuccess("Status updated to " + statuses[st-1] + " for " + (selectedStu?selectedStu->getName():"applicant") + "!");
             ConsoleUI::pressEnter(); return;
         }
 
         if(action==5) {
-            int minScore = ConsoleUI::getInt("Reject all below score", 0, 100);
+            int minScore = ConsoleUI::getInt("Enter the minimum resume score — all applicants scoring below this will be rejected (0-100)", 0, 100);
             int cnt=0;
             for(auto&a:applications) {
                 if(a.getInternshipID()==iid && a.getStatus()=="APPLIED" && a.getResumeScore()<minScore) {
@@ -451,26 +548,29 @@ public:
                     addNotif(a.getStudentID(), "student", "Application for " + myInterns[sel]->getRole() + ": REJECTED");
                 }
             }
-            ConsoleUI::printSuccess("Rejected " + to_string(cnt) + " applicant(s).");
+            ConsoleUI::printSuccess("Rejected " + to_string(cnt) + " applicant(s) with resume score below " + to_string(minScore) + ".");
             saveAll(); ConsoleUI::pressEnter(); return;
         }
 
         // Display applicants table
         float minCGPA = 0;
-        if(action==3) minCGPA = ConsoleUI::getFloat("Minimum CGPA", 0, 10);
-        vector<string> hdr = {"AppID", "Student", "CGPA", "Score", "Match%", "Status"};
-        vector<int> widths = {8, 20, 7, 7, 8, 13};
+        if(action==3) minCGPA = ConsoleUI::getFloat("Enter the minimum CGPA to filter by (e.g. 7.5)", 0, 10);
+        vector<string> hdr = {"#", "Student Name", "CGPA", "Score", "Match%", "Status"};
+        vector<int> widths = {5, 22, 7, 7, 8, 13};
         ConsoleUI::printTableHeader(hdr, widths);
+        int rowNum = 0;
         for(auto&a:applications) {
             if(a.getInternshipID()!=iid) continue;
             Student* s = findStudent(a.getStudentID());
             if(!s) continue;
             if(action==3 && s->getCgpa()<minCGPA) continue;
-            vector<string> row = {"A"+to_string(a.getId()), s->getName(),
+            rowNum++;
+            vector<string> row = {to_string(rowNum), s->getName(),
                 to_string(s->getCgpa()).substr(0,3), to_string(a.getResumeScore()),
                 to_string(a.getMatchPercentage())+"%", a.getStatusColor()+a.getStatus()+Color::RESET};
             ConsoleUI::printTableRow(row, widths);
         }
+        if(rowNum==0) ConsoleUI::printInfo("No applicants found with the selected filter.");
         ConsoleUI::pressEnter();
     }
 
@@ -637,51 +737,65 @@ public:
     // ============ RATE COMPANY (Student) ============
     void rateCompany() {
         ConsoleUI::printHeader("RATE A COMPANY");
+        ConsoleUI::printInfo("You can rate companies you have interacted with (applied, shortlisted, selected, or rejected).");
+        cout << "\n";
         // Show companies student has interacted with
-        set<int> compIDs;
+        vector<int> compIDList;
+        set<int> compIDSet;
         for(auto&a:applications) {
             if(a.getStudentID()!=currentUserID) continue;
             if(a.getStatus()=="SHORTLISTED" || a.getStatus()=="SELECTED" || a.getStatus()=="REJECTED") {
                 Internship* intern = findInternship(a.getInternshipID());
-                if(intern) compIDs.insert(intern->getCompanyID());
+                if(intern && !compIDSet.count(intern->getCompanyID())) {
+                    compIDSet.insert(intern->getCompanyID());
+                    compIDList.push_back(intern->getCompanyID());
+                }
             }
         }
-        if(compIDs.empty()) { ConsoleUI::printInfo("No companies to rate (apply first)."); ConsoleUI::pressEnter(); return; }
-        for(int cid : compIDs) {
-            Company* c = findCompany(cid);
-            if(c) { cout << Color::WHITE << "  C" << cid << " - " << c->getName() << " "; ConsoleUI::printStars(c->getRating()); cout << "\n"; }
+        if(compIDList.empty()) { ConsoleUI::printInfo("You haven't interacted with any companies yet. Apply to internships first!"); ConsoleUI::pressEnter(); return; }
+        cout << Color::CYAN << "  Select a company to rate:\n\n";
+        for(size_t i=0; i<compIDList.size(); i++) {
+            Company* c = findCompany(compIDList[i]);
+            if(c) {
+                cout << Color::BYELLOW << "    [" << (i+1) << "] " << Color::WHITE << c->getName() << " ";
+                ConsoleUI::printStars(c->getRating());
+                cout << Color::DIM << " (" << fixed << setprecision(1) << c->getRating() << "/5.0)" << Color::RESET << "\n";
+            }
         }
-        int cid = ConsoleUI::getInt("Enter Company ID to rate");
-        if(!compIDs.count(cid)) { ConsoleUI::printError("Invalid company."); ConsoleUI::pressEnter(); return; }
-        int stars = ConsoleUI::getInt("Rating (1-5 stars)", 1, 5);
+        int sel = ConsoleUI::getInt("Enter the number of the company you want to rate", 1, (int)compIDList.size()) - 1;
+        int cid = compIDList[sel];
         Company* c = findCompany(cid);
+        cout << "\n" << Color::CYAN << "  How would you rate " << Color::WHITE << c->getName() << Color::CYAN << "?\n";
+        cout << Color::DIM << "  (1 = Poor, 2 = Below Average, 3 = Average, 4 = Good, 5 = Excellent)\n" << Color::RESET;
+        int stars = ConsoleUI::getInt("Your Rating (1-5)", 1, 5);
         c->addRating(stars);
         saveAll();
-        ConsoleUI::printSuccess("Rated " + c->getName() + " with " + to_string(stars) + " stars!");
+        ConsoleUI::printSuccess("You rated " + c->getName() + " with " + to_string(stars) + " star(s)! Thank you for your feedback.");
         ConsoleUI::pressEnter();
     }
 
     // ============ EDIT PROFILE ============
     void editStudentProfile() {
-        ConsoleUI::printHeader("EDIT PROFILE");
+        ConsoleUI::printHeader("EDIT YOUR PROFILE");
         Student* stu = findStudent(currentUserID);
         if(!stu) return;
         stu->displayProfile();
-        ConsoleUI::printMenuItem(1, "Update Name");
-        ConsoleUI::printMenuItem(2, "Update CGPA");
-        ConsoleUI::printMenuItem(3, "Update Skills");
-        ConsoleUI::printMenuItem(4, "Update Resume");
-        ConsoleUI::printMenuItem(5, "Update Email");
-        ConsoleUI::printMenuItem(6, "Back");
+        cout << "\n" << Color::CYAN << "  What would you like to update?\n\n";
+        ConsoleUI::printMenuItem(1, "Change Your Name");
+        ConsoleUI::printMenuItem(2, "Update Your CGPA");
+        ConsoleUI::printMenuItem(3, "Update Your Skills");
+        ConsoleUI::printMenuItem(4, "Rewrite Your About / Resume Description");
+        ConsoleUI::printMenuItem(5, "Change Your Email Address");
+        ConsoleUI::printMenuItem(6, "Go Back (No Changes)");
         int ch = ConsoleUI::getChoice(1, 6);
-        if(ch==1) stu->setName(ConsoleUI::getInput("New Name"));
-        else if(ch==2) stu->setCgpa(ConsoleUI::getFloat("New CGPA", 0, 10));
-        else if(ch==3) { string sk=ConsoleUI::getInput("New Skills (comma-separated)"); stu->setSkills(StrUtil::split(sk,',')); }
-        else if(ch==4) stu->setResumeText(ConsoleUI::getInput("New Resume Text"));
-        else if(ch==5) stu->setEmail(ConsoleUI::getInput("New Email"));
+        if(ch==1) stu->setName(ConsoleUI::getInput("Enter your new name"));
+        else if(ch==2) stu->setCgpa(ConsoleUI::getFloat("Enter your updated CGPA (0.0 to 10.0)", 0, 10));
+        else if(ch==3) { string sk=ConsoleUI::getInput("Enter your updated skills (separate with commas, e.g. Python, C++, SQL)"); stu->setSkills(StrUtil::split(sk,',')); }
+        else if(ch==4) stu->setResumeText(ConsoleUI::getInput("Write your updated about / resume description"));
+        else if(ch==5) stu->setEmail(ConsoleUI::getInput("Enter your new email address"));
         else return;
         saveAll();
-        ConsoleUI::printSuccess("Profile updated!");
+        ConsoleUI::printSuccess("Your profile has been updated successfully!");
         ConsoleUI::pressEnter();
     }
 
@@ -690,17 +804,18 @@ public:
         Company* comp = findCompany(currentUserID);
         if(!comp) return;
         comp->displayProfile();
-        ConsoleUI::printMenuItem(1, "Update Company Name");
-        ConsoleUI::printMenuItem(2, "Update Industry");
-        ConsoleUI::printMenuItem(3, "Update Email");
-        ConsoleUI::printMenuItem(4, "Back");
+        cout << "\n" << Color::CYAN << "  What would you like to update?\n\n";
+        ConsoleUI::printMenuItem(1, "Change Company Name");
+        ConsoleUI::printMenuItem(2, "Change Industry Type");
+        ConsoleUI::printMenuItem(3, "Change Email Address");
+        ConsoleUI::printMenuItem(4, "Go Back (No Changes)");
         int ch = ConsoleUI::getChoice(1, 4);
-        if(ch==1) comp->setName(ConsoleUI::getInput("New Name"));
-        else if(ch==2) comp->setIndustry(ConsoleUI::getInput("New Industry"));
-        else if(ch==3) comp->setEmail(ConsoleUI::getInput("New Email"));
+        if(ch==1) comp->setName(ConsoleUI::getInput("Enter the new company name"));
+        else if(ch==2) comp->setIndustry(ConsoleUI::getInput("Enter the new industry type (IT / Finance / Consulting / Manufacturing / Other)"));
+        else if(ch==3) comp->setEmail(ConsoleUI::getInput("Enter the new email address"));
         else return;
         saveAll();
-        ConsoleUI::printSuccess("Profile updated!");
+        ConsoleUI::printSuccess("Company profile updated successfully!");
         ConsoleUI::pressEnter();
     }
 
@@ -752,19 +867,19 @@ public:
             if(stu) stu->displayDashboardHeader();
             int unread=0;
             for(auto&n:notifications) if(n.getUserID()==currentUserID && n.getUserType()=="student" && !n.getIsRead()) unread++;
-            cout << "\n";
-            ConsoleUI::printMenuItem(1, "Browse Internships");
-            ConsoleUI::printMenuItem(2, "Search Internships");
-            ConsoleUI::printMenuItem(3, "Apply to Internship");
-            ConsoleUI::printMenuItem(4, "My Applications");
+            cout << "\n" << Color::CYAN << "  What would you like to do?\n\n";
+            ConsoleUI::printMenuItem(1, "Browse Available Internships");
+            ConsoleUI::printMenuItem(2, "Search Internships by Keyword");
+            ConsoleUI::printMenuItem(3, "Apply to an Internship");
+            ConsoleUI::printMenuItem(4, "View My Applications");
             ConsoleUI::printMenuItem(5, "View Application Details");
-            ConsoleUI::printMenuItem(6, "Dashboard & Analytics");
-            ConsoleUI::printMenuItem(7, "Recommendations");
+            ConsoleUI::printMenuItem(6, "My Dashboard & Analytics");
+            ConsoleUI::printMenuItem(7, "Recommended Internships for Me");
             ConsoleUI::printMenuItem(8, "Notifications" + (unread>0 ? " ("+Color::BRED+to_string(unread)+" new"+Color::RESET+")" : ""));
-            ConsoleUI::printMenuItem(9, "Rate a Company");
-            ConsoleUI::printMenuItem(10, "Edit Profile");
-            ConsoleUI::printMenuItem(11, "Change Password");
-            ConsoleUI::printMenuItem(12, "Export Report");
+            ConsoleUI::printMenuItem(9, "Rate a Company I've Interacted With");
+            ConsoleUI::printMenuItem(10, "Edit My Profile");
+            ConsoleUI::printMenuItem(11, "Change My Password");
+            ConsoleUI::printMenuItem(12, "Export My Report");
             ConsoleUI::printMenuItem(13, "Logout");
             int ch = ConsoleUI::getChoice(1, 13);
             if(ch==1) browseInternships();
@@ -792,16 +907,16 @@ public:
             if(comp) comp->displayDashboardHeader();
             int unread=0;
             for(auto&n:notifications) if(n.getUserID()==currentUserID && n.getUserType()=="company" && !n.getIsRead()) unread++;
-            cout << "\n";
-            ConsoleUI::printMenuItem(1, "Post Internship");
-            ConsoleUI::printMenuItem(2, "View Applicants");
+            cout << "\n" << Color::CYAN << "  What would you like to do?\n\n";
+            ConsoleUI::printMenuItem(1, "Post a New Internship Opportunity");
+            ConsoleUI::printMenuItem(2, "View & Manage Applicants (Accept / Reject / Shortlist)");
             ConsoleUI::printMenuItem(3, "View Application Details");
-            ConsoleUI::printMenuItem(4, "Dashboard & Analytics");
-            ConsoleUI::printMenuItem(5, "Recommended Candidates");
+            ConsoleUI::printMenuItem(4, "Company Dashboard & Analytics");
+            ConsoleUI::printMenuItem(5, "See Recommended Candidates for Your Internships");
             ConsoleUI::printMenuItem(6, "Notifications" + (unread>0 ? " ("+Color::BRED+to_string(unread)+" new"+Color::RESET+")" : ""));
             ConsoleUI::printMenuItem(7, "Edit Company Profile");
             ConsoleUI::printMenuItem(8, "Change Password");
-            ConsoleUI::printMenuItem(9, "Export Report");
+            ConsoleUI::printMenuItem(9, "Export Company Report");
             ConsoleUI::printMenuItem(10, "Logout");
             int ch = ConsoleUI::getChoice(1, 10);
             if(ch==1) postInternship();
@@ -835,10 +950,11 @@ public:
     ║                                                       ║
     ╚═══════════════════════════════════════════════════════╝
 )" << Color::RESET << "\n";
-            ConsoleUI::printMenuItem(1, "Student Login");
-            ConsoleUI::printMenuItem(2, "Company Login");
-            ConsoleUI::printMenuItem(3, "Student Registration");
-            ConsoleUI::printMenuItem(4, "Company Registration");
+            cout << Color::CYAN << "  Welcome! Please choose an option:\n\n";
+            ConsoleUI::printMenuItem(1, "Login as Student");
+            ConsoleUI::printMenuItem(2, "Login as Company");
+            ConsoleUI::printMenuItem(3, "Register as a New Student");
+            ConsoleUI::printMenuItem(4, "Register as a New Company");
             ConsoleUI::printMenuItem(5, "Admin Panel");
             ConsoleUI::printMenuItem(6, "Exit");
             int ch = ConsoleUI::getChoice(1, 6);
