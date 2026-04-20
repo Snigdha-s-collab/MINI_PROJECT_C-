@@ -6,7 +6,7 @@ TARGET = siams
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC) -lws2_32
 
 clean:
 	rm -f $(TARGET) $(TARGET).exe
